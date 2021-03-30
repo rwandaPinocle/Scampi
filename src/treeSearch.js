@@ -1,6 +1,6 @@
 import Chess from 'chess.js'
 
-const initialBoard = '7k/6pp/8/8/8/8/6PP/7K w - - 0 1';
+const initialBoard = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 
 class Node {
     constructor(fen) {
@@ -9,7 +9,8 @@ class Node {
         this.moves = this.board.moves();
         this.childNodes = {};
         this.simCount = 0;
-        this.wins = 0;
+        this.wWins = 0;
+        this.bWins = 0;
         this.player = this.board.turn();
     }
 
@@ -24,20 +25,39 @@ class Node {
 }
 
 
+function shuffle(array) {
+  var currentIndex = array.length, temporaryValue, randomIndex;
+
+  // While there remain elements to shuffle...
+  while (0 !== currentIndex) {
+
+    // Pick a remaining element...
+    randomIndex = Math.floor(Math.random() * currentIndex);
+    currentIndex -= 1;
+
+    // And swap it with the current element.
+    temporaryValue = array[currentIndex];
+    array[currentIndex] = array[randomIndex];
+    array[randomIndex] = temporaryValue;
+  }
+
+  return array;
+}
 
 function getBestUtc(pntNode) {
     let bestScore = -1;
     let bestMove = pntNode.moves[0];
     let score, exploit, explore;
-    for (let move of pntNode.moves) {
+    for (let move of shuffle(pntNode.moves)) {
         // for explanation, see link
         // https://en.wikipedia.org/wiki/Monte_Carlo_tree_search
         let w, n, N, c;
         N = pntNode.simCount;
         c = 2**(1/2);
-        if (pntNode.childNodes[move]) {
-            w = pntNode.childNodes[move].wins;
-            n = pntNode.childNodes[move].simCount;
+        const child = pntNode.childNodes[move];
+        if (child) {
+            w = (pntNode.player === 'w') ? child.wWins : child.bWins;
+            n = child.simCount;
         } else {
             return move;
         }
@@ -76,7 +96,10 @@ function traverse(pntNode, path) {
 
 function backprop(path, result) {
     for (let node of path) {
-        node.wins += (node.player === result) ? 1 : 0;
+        const wIncr = ('w' === result) ? 1 : 0;
+        const bIncr = ('b' === result) ? 1 : 0;
+        node.wWins += wIncr;
+        node.bWins += bIncr;
         node.simCount += 1;
     }
 }
@@ -85,24 +108,31 @@ function backprop(path, result) {
 class Game {
     rootNode = new Node(initialBoard);
     started = false;
-    workerAvailable = true;
+    workerCount = 20;
+    workersAvailable = 20;
     currentGamePath;
     rolloutCount = 0;
 
     constructor() {
-        this.worker = new Worker('./worker.js');
-        this.worker.onmessage = (e) => {
-            let winResult = e.data;
-            backprop(this.currentGamePath, winResult);
-            this.workerAvailable = true;
-            this.rolloutCount += 1;
-            console.log(this.rolloutCount);
+        this.workers = [];
+        for (let i=0; i<this.workerCount; i++) {
+            const worker = new Worker('./worker.js');
+            worker.onmessage = (e) => {
+                let winResult = e.data;
+                backprop(this.currentGamePath, winResult);
+                this.workersAvailable += 1;
+                this.rolloutCount += 1;
+                if (this.rolloutCount % 100 === 0) {
+                    console.log(this.rolloutCount);
+                }
+            }
+            this.workers.push(worker);
         }
     }
 
     playout = (node) => {
-        this.workerAvailable = false;
-        this.worker.postMessage(node.board);
+        this.workersAvailable = 0;
+        this.workers.forEach(w => w.postMessage(node.fen));
     }
 
     buildTree = async () => {
@@ -111,9 +141,9 @@ class Game {
             if (!this.rootNode) {
                 continue;
             }
-            if (this.workerAvailable) {
-                const path = traverse(this.rootNode);
-                const leaf = path[0];
+            if (this.workersAvailable === this.workerCount) {
+                this.currentGamePath = traverse(this.rootNode);
+                const leaf = this.currentGamePath[0];
                 this.playout(leaf);
             }
             await new Promise(r => setTimeout(r, 1));
@@ -123,24 +153,27 @@ class Game {
     makeBestMove = () => {
         console.log(this.rootNode.childNodes);
         let bestMove = this.rootNode.moves[0];
-        let mostVisits = -1;
+        let bestScore = -1;
         let childNode;
         for (let move of this.rootNode.moves) {
             childNode = this.rootNode.childNodes[move];
             if (!childNode) {
-                console.log('no child');
                 continue;
             }
-            if (mostVisits < childNode.simCount) {
-                mostVisits = childNode.simCount;
+            let score;
+            if (this.rootNode.player === 'w') {
+                score = childNode.wWins / childNode.simCount;
+            } else {
+                score = childNode.bWins / childNode.simCount;
+            }
+            if (bestScore < score) {
+                bestScore = score;
                 bestMove = move;
             }
         }
         if (!this.rootNode.childNodes[bestMove])  {
-            console.log('no node as best move');
             return
         }
-        console.log('making move');
         this.rootNode = this.rootNode.childNodes[bestMove];
     }
 

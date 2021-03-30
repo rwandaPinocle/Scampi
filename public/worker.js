@@ -1,9 +1,30 @@
+importScripts('chess.js');
+
+
+function takeMove() {
+    return (Math.random() > 0.7);
+}
+
+const chess = new Chess();
+
+
 onmessage = function (e) {
-    const chess = e.data;
+    chess.load(e.data);
 
     while (!chess.game_over()) {
         const moves = chess.moves();
-        const move = moves[Math.floor(Math.random() * moves.length)];
+        let move = moves[Math.floor(Math.random() * moves.length)];
+        for (let m of moves) {
+            const goodMove = m.includes('x') || m.includes('+') || m.includes('=Q');
+            if (goodMove && takeMove()) {
+                move = m;
+                break;
+            }
+            if (m.includes('#')) {
+                move = m;
+                break;
+            }
+        }
         chess.move(move);
     }
     const player = chess.turn();

@@ -14,7 +14,7 @@ function App() {
     }
     useEffect(() => {
         game.buildTree();
-        setInterval(makeMove , 5000);
+        setInterval(makeMove , 30*1000);
     }, []);
 
 
