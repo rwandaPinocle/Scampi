@@ -7,12 +7,14 @@ import { useState, useEffect } from 'react';
 
 function App() {
     const [game, setGame] = useState(new Game());
+    const [fen, setFen] = useState(game.rootNode.fen);
     function makeMove() {
         game.makeBestMove();
+        setFen(game.rootNode.fen);
     }
     useEffect(() => {
         game.buildTree();
-        setInterval(makeMove , 10000);
+        setInterval(makeMove , 5000);
     }, []);
 
 

@@ -1,9 +1,5 @@
-import { Game } from 'treeSearch';
-import Chess from 'chess.js'
-
 onmessage = function (e) {
-    const chess = new Chess(e.data);
-    chess.reset();
+    const chess = e.data;
 
     while (!chess.game_over()) {
         const moves = chess.moves();
